@@ -5,6 +5,8 @@
  */
 package esp32.downloader;
 
+import java.io.IOException;
+
 /**
  *
  * @author fahrul
@@ -14,10 +16,10 @@ public class ESP32Downloader {
     /**
      * @param args the command line arguments
      */
-    public static void main(String[] args) {
+    public static void main(String[] args) throws IOException {
         // TODO code application logic here
         App app = new App();
-        app.setTitle("ESP32 Uploader");
+        app.setTitle("ESP32 Downloader");
         app.setVisible(true);
         
     }

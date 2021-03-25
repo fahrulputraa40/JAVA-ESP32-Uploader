@@ -11,14 +11,23 @@ import java.io.BufferedReader;
 import javax.swing.JFileChooser;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.net.URISyntaxException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Arrays;
+import java.util.Enumeration;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.swing.JOptionPane;
 import javax.swing.JScrollBar;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import jssc.SerialPortList;
+
 
 /**
  *
@@ -29,7 +38,7 @@ public class App extends javax.swing.JFrame {
     /**
      * Creates new form App
      */
-    public App() {
+    public App() throws IOException {
         initComponents();
         Dimension dim = Toolkit.getDefaultToolkit().getScreenSize();
         this.setLocation(dim.width/2-this.getSize().width/2, dim.height/2-this.getSize().height/2);
@@ -39,9 +48,63 @@ public class App extends javax.swing.JFrame {
         firmwarePartition.update = false;
         firmwareApp.update = false;
         
-        this.setResizable(false); 
-      
+        this.setResizable(false);
+        
+        getAbsoluteResourcePath();
+        AbsolutePath+="resources/";
+        if(System.getProperty("os.name").contentEquals("Linux"))
+            esptoolPath = "python3 "+AbsolutePath+"esptool.py";
+        else
+            esptoolPath = AbsolutePath+"esptool.exe";
+        boot_app = AbsolutePath + "boot_app0.bin";
+        bootloader_qio = AbsolutePath + "bootloader_qio_80m.bin";
     }
+    
+    private void getAbsoluteResourcePath(){
+        String path = getClass().getProtectionDomain().getCodeSource().getLocation().getPath();
+        final File jarFile = new File(path);
+        if(jarFile.isFile()){
+            AbsolutePath = path.replaceAll(jarFile.getName(), "");
+            searchResourceJarFile(jarFile, "");
+        }
+        else
+            AbsolutePath = getClass().getResource("/").getPath();
+    }
+    
+    private boolean searchResourceJarFile(File jarFile, String path){
+        try {
+            final JarFile jar = new JarFile(jarFile);
+            final Enumeration<JarEntry> entries = jar.entries(); //gives ALL entries in ja
+            while (entries.hasMoreElements()) {
+                java.util.jar.JarEntry file = (java.util.jar.JarEntry) entries.nextElement();
+                java.io.File f = new java.io.File(AbsolutePath + file.getName());   
+                if (file.getName().startsWith("resources/")) { //filter according to the path
+                    if(file.isDirectory()){
+                        if(Files.isDirectory(Paths.get(AbsolutePath+file.getName())) == false){
+                            f.mkdir();
+//                            System.out.println("Make dir");
+                        }
+                    }
+                    else{
+                        if(Files.exists(Paths.get(AbsolutePath+file.getName())) == false){
+                        java.io.InputStream is = jar.getInputStream(file); // get the input stream
+                        java.io.FileOutputStream fos = new java.io.FileOutputStream(f);
+                        while (is.available() > 0) {  // write contents of 'is' to 'fos'
+                            fos.write(is.read());
+                        }
+                        fos.close();
+                        is.close();
+                        }
+                    }                    
+                }
+            }
+            jar.close();
+        } catch (IOException ex) {
+            Logger.getLogger(App.class.getName()).log(Level.SEVERE, null, ex);
+        }
+        return false;
+    }
+    
 
     /**
      * This method is called from within the constructor to initialize the form.
@@ -232,6 +295,8 @@ public class App extends javax.swing.JFrame {
             JScrollBar sb = jScrollPane1.getVerticalScrollBar();
             sb.setValue( sb.getMaximum());
         }
+        JScrollBar sb = jScrollPane1.getVerticalScrollBar();
+            sb.setValue( sb.getMaximum());
     }
     private void jButton3ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton3ActionPerformed
         // TODO add your handling code here:
@@ -273,11 +338,13 @@ public class App extends javax.swing.JFrame {
             @Override
             public void run() {
                 try {
+                    
                     isUploading = true;
-                    String cmd = "python3 esptool.py --chip esp32 --port "+portSelected+" --baud 921600 --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 80m --flash_size detect 0xe000 ";
-                      cmd+="boot_app0.bin";
+//                    System.out.println(getClass().getResource("/").toString());
+                    String cmd = esptoolPath+" --chip esp32 --port "+portSelected+" --baud 921600 --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 80m --flash_size detect 0xe000 ";
+                      cmd+=boot_app;
                         cmd+=" 0x1000 ";
-                        cmd+="bootloader_qio_80m.bin";
+                        cmd+=bootloader_qio;
                         cmd+=" 0x10000 ";
                         cmd+=jTextField1.getText();
                         cmd+=" 0x8000 ";
@@ -291,12 +358,13 @@ public class App extends javax.swing.JFrame {
                       //+"OTAWebUpdater.ino.bin"
                       //+" 0x8000 "
                       //+"OTAWebUpdater.ino.partitions.bin";
-                Process process = Runtime.getRuntime().exec("python3 esptool.py --chip esp32 --port "+portSelected+" --baud 921600 --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 80m --flash_size detect 0xe000 /home/fahrul/snap/arduino/50/.arduino15/packages/mappi32/hardware/esp32/1.0.5/tools/partitions/boot_app0.bin 0x1000 /home/fahrul/snap/arduino/50/.arduino15/packages/mappi32/hardware/esp32/1.0.5/tools/sdk/bin/bootloader_qio_80m.bin 0x10000 OTAWebUpdater.ino.bin 0x8000 OTAWebUpdater.ino.partitions.bin");
+                      
+                Process process = Runtime.getRuntime().exec(cmd);
                     printResults(process);
                     isUploading = false;
                 } catch (IOException ex) {
                     Logger.getLogger(App.class.getName()).log(Level.SEVERE, null, ex);
-                }
+                } 
                 
             }
         }
@@ -306,9 +374,9 @@ public class App extends javax.swing.JFrame {
     private void jButton4ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton4ActionPerformed
         // TODO add your handling code here:
        String [] listPorts = SerialPortList.getPortNames();
-        for(int i = 0; i < listPorts.length; i++){
-            System.out.println(listPorts[i]);
-        }
+//        for(int i = 0; i < listPorts.length; i++){
+//            System.out.println(listPorts[i]);
+//        }
         if(listPorts.length == 0)
             jComboBox1.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "-- No Port --" }));
         else
@@ -345,7 +413,11 @@ public class App extends javax.swing.JFrame {
         /* Create and display the form */
         java.awt.EventQueue.invokeLater(new Runnable() {
             public void run() {
-                new App().setVisible(true);
+                try {
+                    new App().setVisible(true);
+                } catch (IOException ex) {
+                    Logger.getLogger(App.class.getName()).log(Level.SEVERE, null, ex);
+                }
             }
         });
     }
@@ -386,6 +458,7 @@ public class App extends javax.swing.JFrame {
     
     public FirmwareFile firmwareApp, firmwarePartition;
     boolean isUploading;
+    String AbsolutePath, esptoolPath, boot_app, bootloader_qio;
     
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JButton jButton1;
